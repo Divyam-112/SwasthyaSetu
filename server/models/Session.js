@@ -242,7 +242,7 @@ const sessionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for quick lookups

@@ -57,13 +57,15 @@ export const startSession = asyncHandler(async (req, res) => {
   });
   await session.save();
 
-  res.status(201).json(
-    new ApiResponse(
-      201,
-      { sessionId: session._id, firstQuestion },
-      "Session started successfully"
-    )
-  );
+  res
+    .status(201)
+    .json(
+      new ApiResponse(
+        201,
+        { sessionId: session._id, firstQuestion },
+        "Session started successfully",
+      ),
+    );
 });
 
 /**
@@ -73,15 +75,18 @@ export const startSession = asyncHandler(async (req, res) => {
 export const getSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
 
-  const session = await Session.findById(sessionId).populate("patient", "name age gender preferredLanguage abhaId");
+  const session = await Session.findById(sessionId).populate(
+    "patient",
+    "name age gender preferredLanguage abhaId",
+  );
 
   if (!session) {
     throw new ApiError(404, "Session not found");
   }
 
-  res.status(200).json(
-    new ApiResponse(200, session, "Session retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(new ApiResponse(200, session, "Session retrieved successfully"));
 });
 
 /**
@@ -92,10 +97,12 @@ export const getPatientSessions = asyncHandler(async (req, res) => {
   const patientId = req.userId;
 
   const sessions = await Session.find({ patient: patientId })
-    .select("sessionType status completionPercentage clinicalHistory.chiefComplaint createdAt")
+    .select(
+      "sessionType status completionPercentage clinicalHistory.chiefComplaint createdAt",
+    )
     .sort({ createdAt: -1 });
 
-  res.status(200).json(
-    new ApiResponse(200, sessions, "Sessions retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(new ApiResponse(200, sessions, "Sessions retrieved successfully"));
 });

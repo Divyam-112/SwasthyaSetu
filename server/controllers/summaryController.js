@@ -13,7 +13,7 @@ export const generateSummary = asyncHandler(async (req, res) => {
 
   const session = await Session.findById(sessionId).populate(
     "patient",
-    "name age gender abhaId"
+    "name age gender abhaId",
   );
 
   if (!session) {
@@ -42,14 +42,18 @@ export const generateSummary = asyncHandler(async (req, res) => {
   await session.save();
 
   res.status(200).json(
-    new ApiResponse(200, {
-      summary: session.clinicalSummary.generatedText,
-      ayushSummary: session.clinicalSummary.ayushSummary,
-      redFlags: session.clinicalSummary.redFlags,
-      abnormalValues: session.clinicalSummary.abnormalValues,
-      drugInteractions: session.clinicalSummary.drugInteractions,
-      generatedAt: session.clinicalSummary.generatedAt,
-    }, "Clinical summary generated successfully")
+    new ApiResponse(
+      200,
+      {
+        summary: session.clinicalSummary.generatedText,
+        ayushSummary: session.clinicalSummary.ayushSummary,
+        redFlags: session.clinicalSummary.redFlags,
+        abnormalValues: session.clinicalSummary.abnormalValues,
+        drugInteractions: session.clinicalSummary.drugInteractions,
+        generatedAt: session.clinicalSummary.generatedAt,
+      },
+      "Clinical summary generated successfully",
+    ),
   );
 });
 
@@ -69,16 +73,23 @@ export const getSummary = asyncHandler(async (req, res) => {
   }
 
   if (!session.clinicalSummary || !session.clinicalSummary.generatedText) {
-    throw new ApiError(404, "Summary has not been generated yet for this session");
+    throw new ApiError(
+      404,
+      "Summary has not been generated yet for this session",
+    );
   }
 
   res.status(200).json(
-    new ApiResponse(200, {
-      summary: session.clinicalSummary,
-      patientInfo: session.patient,
-      clinicalHistory: session.clinicalHistory,
-      ayushAssessment: session.ayushAssessment,
-    }, "Summary retrieved successfully")
+    new ApiResponse(
+      200,
+      {
+        summary: session.clinicalSummary,
+        patientInfo: session.patient,
+        clinicalHistory: session.clinicalHistory,
+        ayushAssessment: session.ayushAssessment,
+      },
+      "Summary retrieved successfully",
+    ),
   );
 });
 
@@ -103,7 +114,13 @@ export const updateSummary = asyncHandler(async (req, res) => {
 
   await session.save();
 
-  res.status(200).json(
-    new ApiResponse(200, session.clinicalSummary, "Summary updated successfully")
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        session.clinicalSummary,
+        "Summary updated successfully",
+      ),
+    );
 });

@@ -1,22 +1,3 @@
-/**
- * Speech Service — Web Speech API (Browser-based)
- *
- * STT (Speech-to-Text) and TTS (Text-to-Speech) are now handled CLIENT-SIDE
- * using the browser's built-in Web Speech API.
- *
- * Benefits over Bhashini:
- *   ✅ No API key required
- *   ✅ Completely free
- *   ✅ Supports Hindi + 10+ Indian languages
- *   ✅ Works offline in some browsers
- *   ✅ Zero server load for speech processing
- *
- * This server-side module provides:
- *   1. Supported language configuration
- *   2. Language code mapping (BCP-47 codes for Web Speech API)
- *   3. Fallback text processing utilities
- */
-
 // ─── Language Configuration ──────────────────────────────────────
 // BCP-47 language codes used by Web Speech API
 export const SUPPORTED_LANGUAGES = {

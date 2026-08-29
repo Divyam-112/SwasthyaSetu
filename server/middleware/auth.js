@@ -27,7 +27,8 @@ export const verifyToken = async (req, res, next) => {
       req.userRole = "doctor";
     } else {
       const patient = await Patient.findById(decoded.id);
-      if (!patient) throw new ApiError(401, "Patient not found. Invalid token.");
+      if (!patient)
+        throw new ApiError(401, "Patient not found. Invalid token.");
       req.user = patient;
       req.userRole = "patient";
     }
@@ -52,7 +53,9 @@ export const verifyToken = async (req, res, next) => {
 export const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.userRole)) {
-      return next(new ApiError(403, "You do not have permission to perform this action."));
+      return next(
+        new ApiError(403, "You do not have permission to perform this action."),
+      );
     }
     next();
   };

@@ -37,7 +37,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
         (error, result) => {
           if (error) reject(error);
           else resolve(result);
-        }
+        },
       );
       uploadStream.end(req.file.buffer);
     });
@@ -60,15 +60,20 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   await session.save();
 
   // Get the saved document (last one in array)
-  const savedDoc = session.scannedDocuments[session.scannedDocuments.length - 1];
+  const savedDoc =
+    session.scannedDocuments[session.scannedDocuments.length - 1];
 
   res.status(201).json(
-    new ApiResponse(201, {
-      docId: savedDoc._id,
-      imageUrl,
-      status: "uploaded",
-      type: type || "other",
-    }, "Document uploaded successfully")
+    new ApiResponse(
+      201,
+      {
+        docId: savedDoc._id,
+        imageUrl,
+        status: "uploaded",
+        type: type || "other",
+      },
+      "Document uploaded successfully",
+    ),
   );
 });
 
@@ -99,9 +104,13 @@ export const processDocument = asyncHandler(async (req, res) => {
   try {
     // Call ML teammate's OCR service
     const mlServiceUrl = process.env.ML_SERVICE_URL || "http://localhost:8000";
-    const ocrResponse = await axios.post(`${mlServiceUrl}/api/ocr/process`, {
-      imageUrl: doc.imageUrl,
-    }, { timeout: 30000 }); // 30 second timeout
+    const ocrResponse = await axios.post(
+      `${mlServiceUrl}/api/ocr/process`,
+      {
+        imageUrl: doc.imageUrl,
+      },
+      { timeout: 30000 },
+    ); // 30 second timeout
 
     const { rawText, extractedData } = ocrResponse.data;
 
@@ -120,19 +129,26 @@ export const processDocument = asyncHandler(async (req, res) => {
     await session.save();
 
     res.status(200).json(
-      new ApiResponse(200, {
-        docId,
-        status: "processed",
-        extractedData: doc.extractedData,
-        ocrText: doc.ocrText,
-      }, "Document processed successfully")
+      new ApiResponse(
+        200,
+        {
+          docId,
+          status: "processed",
+          extractedData: doc.extractedData,
+          ocrText: doc.ocrText,
+        },
+        "Document processed successfully",
+      ),
     );
   } catch (error) {
     console.error("OCR Service Error:", error.message);
 
     // If ML service is down, return a helpful error
     if (error.code === "ECONNREFUSED") {
-      throw new ApiError(503, "OCR service is unavailable. Make sure the ML service is running.");
+      throw new ApiError(
+        503,
+        "OCR service is unavailable. Make sure the ML service is running.",
+      );
     }
     throw new ApiError(500, "Document processing failed. Please try again.");
   }
@@ -160,9 +176,9 @@ export const getDocument = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Document not found");
   }
 
-  res.status(200).json(
-    new ApiResponse(200, doc, "Document retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(new ApiResponse(200, doc, "Document retrieved successfully"));
 });
 
 /**
@@ -180,10 +196,10 @@ export const getSessionDocuments = asyncHandler(async (req, res) => {
 
   // Sort by upload date (newest first)
   const documents = session.scannedDocuments.sort(
-    (a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)
+    (a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt),
   );
 
-  res.status(200).json(
-    new ApiResponse(200, documents, "Documents retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(new ApiResponse(200, documents, "Documents retrieved successfully"));
 });

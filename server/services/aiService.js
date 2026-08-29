@@ -1,16 +1,53 @@
 import axios from "axios";
 
+// ─── LANGUAGE CONFIGURATION ──────────────────────────────────────
+
+const LANGUAGE_MAP = {
+  hi: { name: "Hindi", script: "Devanagari", example: "Aapko kya taklif hai?" },
+  en: {
+    name: "English",
+    script: "Latin",
+    example: "What seems to be the problem?",
+  },
+  bn: { name: "Bengali", script: "Bengali", example: "আপনার কী সমস্যা হচ্ছে?" },
+  ta: { name: "Tamil", script: "Tamil", example: "உங்களுக்கு என்ன பிரச்சனை?" },
+  te: { name: "Telugu", script: "Telugu", example: "మీకు ఏమి సమస్య ఉంది?" },
+  mr: {
+    name: "Marathi",
+    script: "Devanagari",
+    example: "तुम्हाला काय त्रास होतोय?",
+  },
+  gu: { name: "Gujarati", script: "Gujarati", example: "તમને શું તકલીફ છે?" },
+  kn: { name: "Kannada", script: "Kannada", example: "ನಿಮಗೆ ಏನು ಸಮಸ್ಯೆ?" },
+  ml: {
+    name: "Malayalam",
+    script: "Malayalam",
+    example: "നിങ്ങൾക്ക് എന്താണ് പ്രശ്നം?",
+  },
+  pa: { name: "Punjabi", script: "Gurmukhi", example: "ਤੁਹਾਨੂੰ ਕੀ ਤਕਲੀਫ਼ ਹੈ?" },
+};
+
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────
 
-const CLINICAL_SYSTEM_PROMPT = `You are a medical history-taking AI assistant at an Indian hospital (SwasthyaSetu).
+function getClinicalSystemPrompt(langCode = "hi") {
+  const lang = LANGUAGE_MAP[langCode] || LANGUAGE_MAP.hi;
+
+  return `You are a medical history-taking AI assistant at an Indian hospital.
 Your job is to conduct a structured clinical history interview with the patient.
+
+LANGUAGE INSTRUCTION:
+- You MUST ask all questions and provide all options in ${lang.name} language.
+- Use simple, conversational ${lang.name} that a common person can understand easily.
+- For medical terms, you may include the English term in parentheses for clarity.
+  Example: "ब्लड प्रेशर (Blood Pressure)" or "${lang.example}"
+- Keep the language natural and empathetic.
 
 RULES:
 1. Ask ONE question at a time
 2. Follow the SOCRATES framework for symptoms:
    S - Site, O - Onset, C - Character, R - Radiation,
    A - Associated symptoms, T - Timing, E - Exacerbating/relieving, S - Severity
-3. Be empathetic, use simple Hinglish (Hindi + English mix)
+3. Be empathetic, use simple ${lang.name}
 4. Provide 4-6 multiple-choice options along with each question for easy tap input
 5. After chief complaint, systematically cover in order:
    HPI (using SOCRATES) → Past Medical History → Past Surgical History
@@ -23,8 +60,8 @@ RULES:
 
 OUTPUT FORMAT (strict JSON only, no markdown):
 {
-  "question": "Your next question to the patient in Hinglish",
-  "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+  "question": "Your next question to the patient in ${lang.name}",
+  "options": ["Option 1 in ${lang.name}", "Option 2 in ${lang.name}", "Option 3", "Option 4"],
   "category": "chief_complaint|hpi|past_medical|past_surgical|drug_history|allergy|family_history|personal_history|review_of_systems|closing",
   "isRedFlag": false,
   "redFlagAlert": null,
@@ -33,8 +70,12 @@ OUTPUT FORMAT (strict JSON only, no markdown):
     "field_name": "extracted value from patient's last answer"
   }
 }`;
+}
 
-const AYUSH_EXTENSION_PROMPT = `
+function getAyushExtensionPrompt(langCode = "hi") {
+  const lang = LANGUAGE_MAP[langCode] || LANGUAGE_MAP.hi;
+
+  return `
 
 ADDITIONAL AYUSH/AYURVEDIC ASSESSMENT:
 After completing the standard medical history, also assess:
@@ -46,8 +87,9 @@ After completing the standard medical history, also assess:
 - Sattva (mental constitution: Pravara/Madhyama/Avara)
 - Ahara-Vihara (diet and lifestyle)
 
-Ask these in simple Hinglish with options. Include "ayush_assessment" as category for these questions.
+Ask these in simple ${lang.name} with options. Include "ayush_assessment" as category for these questions.
 When AYUSH assessment is also complete, then set completionPercentage to 100.`;
+}
 
 const SUMMARY_PROMPT = `You are a clinical summary generator. Generate a structured clinical history summary from the provided data.
 
@@ -87,7 +129,7 @@ async function callLLM(messages, jsonMode = true) {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
-    console.warn("⚠️  OPENROUTER_API_KEY not set. Using mock response.");
+    console.warn("OPENROUTER_API_KEY not set. Using mock response.");
     return null;
   }
 
@@ -122,15 +164,19 @@ async function callLLM(messages, jsonMode = true) {
 /**
  * Get next question from AI based on conversation history.
  * Falls back to mock data if API key is not configured.
+ * @param {Array} conversationHistory - Chat messages
+ * @param {string} sessionType - "allopathic" or "ayush"
+ * @param {string} language - Patient's preferred language code (e.g., "hi", "ta", "bn")
  */
 export async function getNextQuestion(
   conversationHistory,
   sessionType = "allopathic",
+  language = "hi",
 ) {
   const systemPrompt =
     sessionType === "ayush"
-      ? CLINICAL_SYSTEM_PROMPT + AYUSH_EXTENSION_PROMPT
-      : CLINICAL_SYSTEM_PROMPT;
+      ? getClinicalSystemPrompt(language) + getAyushExtensionPrompt(language)
+      : getClinicalSystemPrompt(language);
 
   const messages = [
     { role: "system", content: systemPrompt },

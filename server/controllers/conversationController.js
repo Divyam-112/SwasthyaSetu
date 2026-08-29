@@ -1,4 +1,5 @@
 import Session from "../models/Session.js";
+import Patient from "../models/Patient.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
@@ -16,7 +17,10 @@ export const respondToQuestion = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Session ID and answer are required");
   }
 
-  const session = await Session.findById(sessionId);
+  const session = await Session.findById(sessionId).populate(
+    "patient",
+    "preferredLanguage",
+  );
   if (!session) {
     throw new ApiError(404, "Session not found");
   }
@@ -24,6 +28,9 @@ export const respondToQuestion = asyncHandler(async (req, res) => {
   if (session.status !== "in_progress") {
     throw new ApiError(400, "This session is no longer active");
   }
+
+  // Get patient's preferred language
+  const patientLang = session.patient?.preferredLanguage || "hi";
 
   // Save patient's answer in conversation
   session.conversation.push({
@@ -40,8 +47,12 @@ export const respondToQuestion = asyncHandler(async (req, res) => {
     content: msg.content,
   }));
 
-  // Get next question from AI
-  const aiResponse = await getNextQuestion(conversationHistory, session.sessionType);
+  // Get next question from AI (in patient's preferred language)
+  const aiResponse = await getNextQuestion(
+    conversationHistory,
+    session.sessionType,
+    patientLang,
+  );
 
   // Save AI's next question in conversation
   session.conversation.push({
@@ -53,7 +64,8 @@ export const respondToQuestion = asyncHandler(async (req, res) => {
   });
 
   // Update session progress
-  session.completionPercentage = aiResponse.completionPercentage || session.completionPercentage;
+  session.completionPercentage =
+    aiResponse.completionPercentage || session.completionPercentage;
   session.currentCategory = aiResponse.category || session.currentCategory;
 
   // If AI extracted structured data, merge it into clinicalHistory
@@ -79,16 +91,20 @@ export const respondToQuestion = asyncHandler(async (req, res) => {
   await session.save();
 
   res.status(200).json(
-    new ApiResponse(200, {
-      nextQuestion: {
-        question: aiResponse.question,
-        options: aiResponse.options,
-        category: aiResponse.category,
-        completionPercentage: aiResponse.completionPercentage,
-        isRedFlag: aiResponse.isRedFlag || false,
-        redFlagAlert: aiResponse.redFlagAlert || null,
+    new ApiResponse(
+      200,
+      {
+        nextQuestion: {
+          question: aiResponse.question,
+          options: aiResponse.options,
+          category: aiResponse.category,
+          completionPercentage: aiResponse.completionPercentage,
+          isRedFlag: aiResponse.isRedFlag || false,
+          redFlagAlert: aiResponse.redFlagAlert || null,
+        },
       },
-    }, "Response recorded successfully")
+      "Response recorded successfully",
+    ),
   );
 });
 
@@ -106,10 +122,16 @@ export const respondVoice = asyncHandler(async (req, res) => {
   }
 
   if (!transcribedText || transcribedText.trim() === "") {
-    throw new ApiError(400, "Transcribed text is required. Please speak clearly and try again.");
+    throw new ApiError(
+      400,
+      "Transcribed text is required. Please speak clearly and try again.",
+    );
   }
 
-  const session = await Session.findById(sessionId);
+  const session = await Session.findById(sessionId).populate(
+    "patient",
+    "preferredLanguage",
+  );
   if (!session) {
     throw new ApiError(404, "Session not found");
   }
@@ -117,6 +139,9 @@ export const respondVoice = asyncHandler(async (req, res) => {
   if (session.status !== "in_progress") {
     throw new ApiError(400, "This session is no longer active");
   }
+
+  // Get patient's preferred language (fallback to request body language, then Hindi)
+  const patientLang = session.patient?.preferredLanguage || language || "hi";
 
   // Save patient's voice-transcribed answer in conversation
   session.conversation.push({
@@ -133,8 +158,12 @@ export const respondVoice = asyncHandler(async (req, res) => {
     content: msg.content,
   }));
 
-  // Get next question from AI
-  const aiResponse = await getNextQuestion(conversationHistory, session.sessionType);
+  // Get next question from AI (in patient's preferred language)
+  const aiResponse = await getNextQuestion(
+    conversationHistory,
+    session.sessionType,
+    patientLang,
+  );
 
   // Save AI response
   session.conversation.push({
@@ -145,7 +174,8 @@ export const respondVoice = asyncHandler(async (req, res) => {
     category: aiResponse.category,
   });
 
-  session.completionPercentage = aiResponse.completionPercentage || session.completionPercentage;
+  session.completionPercentage =
+    aiResponse.completionPercentage || session.completionPercentage;
   session.currentCategory = aiResponse.category || session.currentCategory;
 
   // If AI extracted structured data, merge it into clinicalHistory
@@ -173,18 +203,22 @@ export const respondVoice = asyncHandler(async (req, res) => {
   const speechConfig = getSpeechConfig(language || "hi");
 
   res.status(200).json(
-    new ApiResponse(200, {
-      transcribedText: transcribedText.trim(),
-      nextQuestion: {
-        question: aiResponse.question,
-        options: aiResponse.options,
-        category: aiResponse.category,
-        completionPercentage: aiResponse.completionPercentage,
-        isRedFlag: aiResponse.isRedFlag || false,
-        redFlagAlert: aiResponse.redFlagAlert || null,
+    new ApiResponse(
+      200,
+      {
+        transcribedText: transcribedText.trim(),
+        nextQuestion: {
+          question: aiResponse.question,
+          options: aiResponse.options,
+          category: aiResponse.category,
+          completionPercentage: aiResponse.completionPercentage,
+          isRedFlag: aiResponse.isRedFlag || false,
+          redFlagAlert: aiResponse.redFlagAlert || null,
+        },
+        speechConfig: speechConfig.tts, // Client uses this for TTS playback
       },
-      speechConfig: speechConfig.tts, // Client uses this for TTS playback
-    }, "Voice response processed successfully")
+      "Voice response processed successfully",
+    ),
   );
 });
 
@@ -196,7 +230,7 @@ export const getConversation = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
 
   const session = await Session.findById(sessionId).select(
-    "conversation completionPercentage currentCategory status"
+    "conversation completionPercentage currentCategory status",
   );
 
   if (!session) {
@@ -204,11 +238,15 @@ export const getConversation = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json(
-    new ApiResponse(200, {
-      conversation: session.conversation,
-      completionPercentage: session.completionPercentage,
-      currentCategory: session.currentCategory,
-      status: session.status,
-    }, "Conversation retrieved successfully")
+    new ApiResponse(
+      200,
+      {
+        conversation: session.conversation,
+        completionPercentage: session.completionPercentage,
+        currentCategory: session.currentCategory,
+        status: session.status,
+      },
+      "Conversation retrieved successfully",
+    ),
   );
 });

@@ -38,7 +38,7 @@ app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:5173",
     credentials: true,
-  })
+  }),
 );
 app.use(express.json({ limit: "16mb" })); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true, limit: "16mb" }));
@@ -56,7 +56,7 @@ app.use("/api/doctor", doctorRoutes);
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "🏥 SwasthyaSetu API is running!",
+    message: "SwasthyaSetu API is running!",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });
@@ -75,23 +75,23 @@ app.use(errorHandler);
 
 // ─── Socket.io Events ───────────────────────────────────────────
 io.on("connection", (socket) => {
-  console.log(`🔌 Client connected: ${socket.id}`);
+  console.log(` Client connected: ${socket.id}`);
 
   // Patient joins their session room
   socket.on("join-session", ({ sessionId }) => {
     socket.join(`session-${sessionId}`);
-    console.log(`📋 Socket ${socket.id} joined session: ${sessionId}`);
+    console.log(`Socket ${socket.id} joined session: ${sessionId}`);
   });
 
   // Doctor joins the doctor room
   socket.on("join-doctor-room", () => {
     socket.join("doctor-room");
-    console.log(`👨‍⚕️ Doctor joined: ${socket.id}`);
+    console.log(`Doctor joined: ${socket.id}`);
   });
 
   // Handle disconnect
   socket.on("disconnect", () => {
-    console.log(`🔌 Client disconnected: ${socket.id}`);
+    console.log(`Client disconnected: ${socket.id}`);
   });
 });
 
@@ -105,16 +105,14 @@ const startServer = async () => {
 
     // Start listening
     server.listen(PORT, () => {
-      console.log(`\n🏥 ═══════════════════════════════════════════`);
-      console.log(`   SwasthyaSetu Backend Server`);
-      console.log(`   Port: ${PORT}`);
-      console.log(`   Environment: ${process.env.NODE_ENV || "development"}`);
-      console.log(`   API: http://localhost:${PORT}/api`);
-      console.log(`   Health: http://localhost:${PORT}/api/health`);
-      console.log(`🏥 ═══════════════════════════════════════════\n`);
+      console.log(`SwasthyaSetu Backend Server`);
+      console.log(`Port: ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`API: http://localhost:${PORT}/api`);
+      console.log(`Health: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
-    console.error("❌ Failed to start server:", error.message);
+    console.error("Failed to start server:", error.message);
     process.exit(1);
   }
 };

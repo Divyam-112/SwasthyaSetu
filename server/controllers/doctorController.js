@@ -13,7 +13,7 @@ export const getPatientQueue = asyncHandler(async (req, res) => {
   })
     .populate("patient", "name age gender abhaId preferredLanguage")
     .select(
-      "patient sessionType status completionPercentage clinicalHistory.chiefComplaint clinicalSummary.redFlags createdAt"
+      "patient sessionType status completionPercentage clinicalHistory.chiefComplaint clinicalSummary.redFlags createdAt",
     )
     .sort({ createdAt: -1 });
 
@@ -25,7 +25,8 @@ export const getPatientQueue = asyncHandler(async (req, res) => {
     gender: session.patient?.gender,
     abhaId: session.patient?.abhaId,
     sessionType: session.sessionType,
-    chiefComplaint: session.clinicalHistory?.chiefComplaint || "Not recorded yet",
+    chiefComplaint:
+      session.clinicalHistory?.chiefComplaint || "Not recorded yet",
     status: session.status,
     completionPercentage: session.completionPercentage,
     hasRedFlags: session.clinicalSummary?.redFlags?.length > 0,
@@ -33,9 +34,9 @@ export const getPatientQueue = asyncHandler(async (req, res) => {
     createdAt: session.createdAt,
   }));
 
-  res.status(200).json(
-    new ApiResponse(200, queue, "Patient queue retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(new ApiResponse(200, queue, "Patient queue retrieved successfully"));
 });
 
 /**
@@ -53,9 +54,11 @@ export const getPatientDetail = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Session not found");
   }
 
-  res.status(200).json(
-    new ApiResponse(200, session, "Patient details retrieved successfully")
-  );
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, session, "Patient details retrieved successfully"),
+    );
 });
 
 /**
@@ -67,7 +70,10 @@ export const submitReview = asyncHandler(async (req, res) => {
   const { status, modifications } = req.body;
 
   if (!status || !["accepted", "modified", "rejected"].includes(status)) {
-    throw new ApiError(400, "Valid review status is required (accepted/modified/rejected)");
+    throw new ApiError(
+      400,
+      "Valid review status is required (accepted/modified/rejected)",
+    );
   }
 
   const session = await Session.findById(sessionId);
@@ -88,10 +94,14 @@ export const submitReview = asyncHandler(async (req, res) => {
   await session.save();
 
   res.status(200).json(
-    new ApiResponse(200, {
-      sessionId,
-      reviewStatus: status,
-      reviewedAt: session.doctorReview.reviewedAt,
-    }, `Session ${status} successfully`)
+    new ApiResponse(
+      200,
+      {
+        sessionId,
+        reviewStatus: status,
+        reviewedAt: session.doctorReview.reviewedAt,
+      },
+      `Session ${status} successfully`,
+    ),
   );
 });
