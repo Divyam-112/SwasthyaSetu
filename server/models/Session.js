@@ -196,7 +196,8 @@ const sessionSchema = new mongoose.Schema(
 
     // ─── MODULE C: Clinical Summary ───────────────────────────────
     clinicalSummary: {
-      generatedText: String,
+      generatedText: String, // English doctor-facing summary
+      patientSummary: String, // Local language patient-facing summary
       ayushSummary: String,
       redFlags: [String],
       abnormalValues: [
@@ -233,6 +234,12 @@ const sessionSchema = new mongoose.Schema(
       modifications: String,
     },
 
+    // ─── Digital Prescription ─────────────────────────────────────
+    prescription: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Prescription",
+    },
+
     // Conversation AI state tracking
     completionPercentage: { type: Number, default: 0 },
     currentCategory: { type: String, default: "greeting" },
@@ -248,6 +255,10 @@ const sessionSchema = new mongoose.Schema(
 // Index for quick lookups
 sessionSchema.index({ patient: 1, createdAt: -1 });
 sessionSchema.index({ status: 1 });
+
+// TTL index — MongoDB automatically deletes sessions after expiresAt
+// This ensures patient data is not stored indefinitely (DPDP Act compliance)
+sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Session = mongoose.model("Session", sessionSchema);
 export default Session;

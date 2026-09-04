@@ -91,9 +91,16 @@ Ask these in simple ${lang.name} with options. Include "ayush_assessment" as cat
 When AYUSH assessment is also complete, then set completionPercentage to 100.`;
 }
 
-const SUMMARY_PROMPT = `You are a clinical summary generator. Generate a structured clinical history summary from the provided data.
+function getSummaryPrompt(langCode = "hi") {
+  const lang = LANGUAGE_MAP[langCode] || LANGUAGE_MAP.hi;
 
-FORMAT the summary as follows:
+  return `You are a clinical summary generator. Generate a structured clinical history summary from the provided data.
+
+You MUST generate TWO summaries:
+1. "summary" — A formal, physician-facing clinical summary in ENGLISH (standard medical format)
+2. "patientSummary" — A simple, easy-to-understand summary in ${lang.name} language for the patient
+
+FORMAT for "summary" (English, doctor-facing):
 1. CHIEF COMPLAINT
 2. HISTORY OF PRESENT ILLNESS (detailed narrative using SOCRATES findings)
 3. PAST MEDICAL HISTORY
@@ -106,6 +113,13 @@ FORMAT the summary as follows:
 10. PRIOR INVESTIGATIONS (from scanned documents)
 11. RED FLAGS / ALERTS
 
+FORMAT for "patientSummary" (${lang.name}, patient-facing):
+- Write in simple, conversational ${lang.name}
+- Summarize what the patient told (chief complaint, key history points)
+- List any medications they mentioned
+- Mention any red flags in simple words the patient can understand
+- Keep it short (5-8 lines max)
+
 Also identify and return separately:
 - redFlags: Any emergency conditions
 - abnormalValues: Out-of-range lab values
@@ -113,12 +127,14 @@ Also identify and return separately:
 
 Return as JSON:
 {
-  "summary": "Full formatted clinical summary text",
+  "summary": "Full formatted clinical summary in English",
+  "patientSummary": "Simple summary in ${lang.name} for the patient",
   "ayushSummary": "Dashavidha Pariksha summary if AYUSH session",
   "redFlags": ["flag1", "flag2"],
   "abnormalValues": [{"test": "name", "value": "val", "concern": "reason"}],
   "drugInteractions": ["interaction1"]
 }`;
+}
 
 // ─── AI SERVICE FUNCTIONS ────────────────────────────────────────
 
@@ -200,16 +216,19 @@ export async function getNextQuestion(
 
 /**
  * Generate clinical summary from session data
+ * @param {Object} session - Populated session document
+ * @param {string} language - Patient's preferred language code
  */
-export async function generateClinicalSummary(session) {
+export async function generateClinicalSummary(session, language = "hi") {
   const messages = [
-    { role: "system", content: SUMMARY_PROMPT },
+    { role: "system", content: getSummaryPrompt(language) },
     {
       role: "user",
       content: `Generate a clinical summary from this data:
 
 PATIENT: ${session.patient?.name || "Unknown"}, Age: ${session.patient?.age || "N/A"}, Gender: ${session.patient?.gender || "N/A"}
 ABHA ID: ${session.patient?.abhaId || "N/A"}
+PATIENT LANGUAGE: ${language}
 
 CONVERSATION HISTORY:
 ${JSON.stringify(session.clinicalHistory, null, 2)}
@@ -242,6 +261,7 @@ Chief Complaint: ${session.clinicalHistory?.chiefComplaint || "Not recorded"}
 [Summary will be generated when OpenRouter API key is configured]
 
 Note: This is a mock summary. Configure OPENROUTER_API_KEY in .env for AI-generated summaries.`,
+      patientSummary: "[Patient summary will be generated in their language when API key is configured]",
       redFlags: session.clinicalSummary?.redFlags || [],
       abnormalValues: [],
       drugInteractions: [],
@@ -253,6 +273,7 @@ Note: This is a mock summary. Configure OPENROUTER_API_KEY in .env for AI-genera
   } catch {
     return {
       summary: response,
+      patientSummary: "",
       redFlags: [],
       abnormalValues: [],
       drugInteractions: [],
@@ -301,6 +322,134 @@ export async function extractClinicalData(session, extractedData) {
   }
 
   session.clinicalHistory = history;
+}
+
+// ─── PATIENT CHAT SYSTEM PROMPT ──────────────────────────────────
+
+function getPatientChatSystemPrompt(langCode = "hi", contextSummary = "") {
+  const lang = LANGUAGE_MAP[langCode] || LANGUAGE_MAP.hi;
+
+  return `You are "SwasthyaSetu Health Companion" — a friendly, knowledgeable AI health assistant for Indian patients.
+
+LANGUAGE INSTRUCTION:
+- Respond ONLY in ${lang.name} language using simple, conversational words.
+- Use the ${lang.script} script.
+- For medical terms, include English in parentheses for clarity.
+
+YOUR ROLE:
+You are a health EDUCATOR and WELLNESS GUIDE, NOT a doctor. You help patients understand their health better.
+
+WHAT YOU CAN DO:
+1. ✅ Explain medical conditions in simple ${lang.name}
+2. ✅ Clarify common health doubts and misconceptions
+3. ✅ Provide Ayurvedic wellness knowledge:
+   - Prakriti (Vata/Pitta/Kapha) based diet and lifestyle tips
+   - Dosha balancing through food and daily routine
+   - Common Ayurvedic herbs and their general benefits (Ashwagandha, Tulsi, Haldi, Amla, etc.)
+   - Panchakarma awareness
+   - Dinacharya (daily routine) and Ritucharya (seasonal routine)
+4. ✅ Suggest basic exercises:
+   - Yoga asanas suitable for common conditions
+   - Pranayama (breathing exercises) — Anulom Vilom, Kapalbhati, Bhramari
+   - Walking and stretching routines
+   - Exercises for specific conditions (back pain, diabetes management, stress)
+5. ✅ Provide general wellness tips (hydration, sleep hygiene, stress management)
+6. ✅ Explain what lab reports mean in simple language
+
+STRICT SAFETY RULES — YOU MUST NEVER:
+1. ❌ NEVER prescribe any medicine (allopathic, ayurvedic, or homeopathic)
+2. ❌ NEVER suggest changing doses of existing medications
+3. ❌ NEVER diagnose any condition
+4. ❌ NEVER contradict the doctor's prescription or advice
+5. ❌ NEVER provide treatment plans
+6. ❌ NEVER claim to replace a doctor's consultation
+
+If asked to prescribe or diagnose, ALWAYS respond with:
+"Main aapko dawai ya diagnosis nahi de sakta. Iske liye apne doctor se zaroor milein."
+
+PATIENT'S HEALTH CONTEXT:
+${contextSummary || "No clinical summary available for this patient yet."}
+
+RESPONSE STYLE:
+- Be warm, empathetic, and encouraging
+- Use simple language, avoid complex medical jargon
+- Keep responses concise (3-6 sentences for simple questions, more for detailed explanations)
+- Use bullet points for lists
+- Always end with encouragement or a wellness tip when appropriate
+- If you're unsure, recommend consulting their doctor`;
+}
+
+/**
+ * Get AI response for patient chat
+ * @param {Array} conversationHistory - Chat messages
+ * @param {string} contextSummary - Patient's clinical summary for context
+ * @param {string} language - Patient's preferred language code
+ * @param {boolean} isFirstMessage - Whether this is the first message (welcome)
+ */
+export async function getPatientChatResponse(
+  conversationHistory,
+  contextSummary = "",
+  language = "hi",
+  isFirstMessage = false,
+) {
+  const systemPrompt = getPatientChatSystemPrompt(language, contextSummary);
+  const lang = LANGUAGE_MAP[language] || LANGUAGE_MAP.hi;
+
+  const messages = [{ role: "system", content: systemPrompt }];
+
+  if (isFirstMessage) {
+    messages.push({
+      role: "user",
+      content: `Greet the patient warmly in ${lang.name}. Introduce yourself as SwasthyaSetu Health Companion. Briefly mention what you can help with (health doubts, ayurvedic tips, exercises). ${contextSummary ? "You have their health summary — let them know you're aware of their recent visit and ready to help with any questions." : "Let them know they can ask any health-related questions."} Keep it short and friendly (3-4 lines max).`,
+    });
+  } else {
+    messages.push(...conversationHistory);
+  }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    // Mock response for development
+    if (isFirstMessage) {
+      const mockGreetings = {
+        hi: "Namaste! Main SwasthyaSetu Health Companion hoon. Main aapki health se judi baatein samjhane, Ayurvedic tips dene, aur exercises suggest karne mein madad kar sakta hoon. Puchiye, aapko kya jaanna hai?",
+        en: "Hello! I'm SwasthyaSetu Health Companion. I can help you understand your health better, share Ayurvedic wellness tips, and suggest exercises. What would you like to know?",
+      };
+      return mockGreetings[language] || mockGreetings.hi;
+    }
+    return language === "en"
+      ? "Thank you for your question! For the best guidance, please configure the AI service. In the meantime, I recommend staying hydrated, getting 7-8 hours of sleep, and doing light exercises like walking."
+      : "Aapka sawaal dhanyavaad! AI service configure hone par main aapko behtar madad de paunga. Tab tak, khub paani piyein, 7-8 ghante ki neend lein, aur halki exercise jaise morning walk zaroor karein.";
+  }
+
+  try {
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "anthropic/claude-sonnet-4-20250514",
+        messages,
+        temperature: 0.5,
+        max_tokens: 800,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://swasthyasetu.in",
+          "X-Title": "SwasthyaSetu Health Companion",
+        },
+        timeout: 30000,
+      },
+    );
+
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.error(
+      "Patient Chat AI Error:",
+      error.response?.data || error.message,
+    );
+    throw new Error("AI service temporarily unavailable. Please try again.");
+  }
 }
 
 // ─── MOCK RESPONSES (for development without API key) ────────────

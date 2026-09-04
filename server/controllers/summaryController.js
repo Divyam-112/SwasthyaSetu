@@ -13,19 +13,23 @@ export const generateSummary = asyncHandler(async (req, res) => {
 
   const session = await Session.findById(sessionId).populate(
     "patient",
-    "name age gender abhaId",
+    "name age gender abhaId preferredLanguage",
   );
 
   if (!session) {
     throw new ApiError(404, "Session not found");
   }
 
-  // Generate summary using AI
-  const summaryData = await generateClinicalSummary(session);
+  // Get patient's preferred language for bilingual summary
+  const patientLang = session.patient?.preferredLanguage || "hi";
+
+  // Generate bilingual summary using AI
+  const summaryData = await generateClinicalSummary(session, patientLang);
 
   // Save summary to session
   session.clinicalSummary = {
-    generatedText: summaryData.summary,
+    generatedText: summaryData.summary, // English (doctor-facing)
+    patientSummary: summaryData.patientSummary || "", // Local language (patient-facing)
     ayushSummary: summaryData.ayushSummary || "",
     redFlags: summaryData.redFlags || [],
     abnormalValues: summaryData.abnormalValues || [],
@@ -46,6 +50,7 @@ export const generateSummary = asyncHandler(async (req, res) => {
       200,
       {
         summary: session.clinicalSummary.generatedText,
+        patientSummary: session.clinicalSummary.patientSummary,
         ayushSummary: session.clinicalSummary.ayushSummary,
         redFlags: session.clinicalSummary.redFlags,
         abnormalValues: session.clinicalSummary.abnormalValues,
