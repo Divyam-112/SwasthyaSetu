@@ -240,6 +240,12 @@ const sessionSchema = new mongoose.Schema(
       ref: "Prescription",
     },
 
+    // ─── Appointment ─────────────────────────────────────────────
+    appointment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+    },
+
     // Conversation AI state tracking
     completionPercentage: { type: Number, default: 0 },
     currentCategory: { type: String, default: "greeting" },

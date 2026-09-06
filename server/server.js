@@ -18,6 +18,7 @@ import doctorRoutes from "./routes/doctor.routes.js";
 import prescriptionRoutes from "./routes/prescription.routes.js";
 import patientChatRoutes from "./routes/patientChat.routes.js";
 import healthTrackerRoutes from "./routes/healthTracker.routes.js";
+import appointmentRoutes from "./routes/appointment.routes.js";
 
 // ─── Initialize Express App ──────────────────────────────────────
 const app = express();
@@ -57,6 +58,7 @@ app.use("/api/doctor", doctorRoutes);
 app.use("/api/prescription", prescriptionRoutes);
 app.use("/api/patient-chat", patientChatRoutes);
 app.use("/api/health-tracker", healthTrackerRoutes);
+app.use("/api/appointment", appointmentRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────
 app.get("/api/health", (req, res) => {
