@@ -2,6 +2,7 @@
  * HTTP client for the SwasthyaSetu backend API.
  * Automatically attaches JWT token from localStorage and handles auth errors.
  */
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 const TOKEN_KEY = "swasthyasetu_doctor_token";
@@ -27,7 +28,7 @@ export function clearAuthToken() {
  */
 export async function apiRequest<T>(
   path: string,
-  options?: RequestInit & { skipAuth?: boolean }
+  options?: RequestInit & { skipAuth?: boolean },
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -37,6 +38,7 @@ export async function apiRequest<T>(
   // Attach JWT token if available
   if (!options?.skipAuth) {
     const token = getAuthToken();
+
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -50,22 +52,26 @@ export async function apiRequest<T>(
   // Handle auth errors
   if (response.status === 401) {
     clearAuthToken();
+
     // Redirect to login if not already there
     if (!window.location.pathname.includes("/doctor")) {
       window.location.href = "/doctor";
     }
+
     throw new Error("Session expired. Please login again.");
   }
 
   if (!response.ok) {
     // Try to extract error message from backend response
     let errorMessage = `Request failed: ${response.status}`;
+
     try {
       const errorData = await response.json();
       errorMessage = errorData.message || errorMessage;
     } catch {
       // If response body isn't JSON, use default message
     }
+
     throw new Error(errorMessage);
   }
 
