@@ -1,8 +1,8 @@
 import type { DoctorProfile } from "@/types/doctor-session";
 
 /**
- * In-memory mock doctor account store. Each entry pairs login credentials
- * with a rich DoctorProfile. Replace with real FastAPI auth when available.
+ * Mock doctor accounts — kept for local development/testing fallback.
+ * In production, authentication goes through the backend API.
  */
 interface MockDoctorAccount {
   email: string;
@@ -17,10 +17,10 @@ const mockDoctorAccounts: MockDoctorAccount[] = [
     doctor: {
       id: "doc-001",
       name: "Dr. Priya Kumar",
-      specialty: "General Medicine",
-      nmcNo: "NMC-2019-084721",
-      hospital: "AIIMS Jodhpur",
+      specialization: "General Medicine",
+      hospitalId: "AIIMS Jodhpur",
       email: "dr.priya@medikiosk.in",
+      role: "doctor",
       initials: "PK",
     },
   },
@@ -30,10 +30,10 @@ const mockDoctorAccounts: MockDoctorAccount[] = [
     doctor: {
       id: "doc-002",
       name: "Dr. Rahul Sharma",
-      specialty: "Internal Medicine",
-      nmcNo: "NMC-2015-031204",
-      hospital: "AIIMS Jodhpur",
+      specialization: "General Medicine",
+      hospitalId: "AIIMS Jodhpur",
       email: "dr.rahul@medikiosk.in",
+      role: "doctor",
       initials: "RS",
     },
   },
@@ -43,10 +43,10 @@ const mockDoctorAccounts: MockDoctorAccount[] = [
     doctor: {
       id: "doc-003",
       name: "Dr. Meena Gupta",
-      specialty: "Cardiology",
-      nmcNo: "NMC-2012-009873",
-      hospital: "AIIMS Jodhpur",
+      specialization: "Ayurveda",
+      hospitalId: "AIIMS Jodhpur",
       email: "dr.meena@medikiosk.in",
+      role: "doctor",
       initials: "MG",
     },
   },

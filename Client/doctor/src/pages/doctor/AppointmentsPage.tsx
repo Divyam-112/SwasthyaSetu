@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
@@ -7,24 +7,17 @@ import {
   Clock,
   XCircle,
   Eye,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { DoctorShell } from "@/components/layout";
 import { Badge } from "@/components/ui";
 import { cn } from "@/utils/cn";
-
-type ApptStatus = "confirmed" | "pending" | "cancelled";
-
-interface Appointment {
-  id: string;
-  time: string;
-  patientName: string;
-  patientId: string;
-  age: number;
-  gender: string;
-  reason: string;
-  status: ApptStatus;
-  duration: number; // minutes
-}
+import {
+  fetchDoctorQueue,
+  type QueueEntry,
+} from "@/services/api/doctorService";
 
 const TODAY = new Date();
 
@@ -51,63 +44,94 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-/** Generate mock appointments for ±7 days around today */
-function generateAppointments(): Appointment[] {
-  const templates: Omit<Appointment, "id" | "time">[] = [
-    { patientName: "Asha Verma", patientId: "mock-patient-demo1", age: 34, gender: "female", reason: "Follow-up — Fever", status: "confirmed", duration: 15 },
-    { patientName: "Ramesh Nair", patientId: "mock-patient-demo2", age: 61, gender: "male", reason: "Cardiac review", status: "confirmed", duration: 20 },
-    { patientName: "Sunita Devi", patientId: "pat-003", age: 47, gender: "female", reason: "Knee pain assessment", status: "pending", duration: 15 },
-    { patientName: "Mohammed Iqbal", patientId: "pat-004", age: 29, gender: "male", reason: "Headache follow-up", status: "confirmed", duration: 10 },
-    { patientName: "Kavitha Rao", patientId: "pat-005", age: 52, gender: "female", reason: "Diabetes review", status: "cancelled", duration: 20 },
-    { patientName: "Geeta Mishra", patientId: "pat-007", age: 68, gender: "female", reason: "Breathlessness review", status: "confirmed", duration: 30 },
-    { patientName: "Vikas Patel", patientId: "pat-008", age: 41, gender: "male", reason: "GI follow-up", status: "pending", duration: 15 },
-    { patientName: "Deepak Chauhan", patientId: "pat-010", age: 55, gender: "male", reason: "Back pain MRI review", status: "confirmed", duration: 20 },
-  ];
-
-  const times = ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "14:00", "14:30", "15:00", "15:30", "16:00"];
-  const appts: Appointment[] = [];
-
-  // Spread appointments across ±5 days
-  const offsets = [0, 0, 0, 1, 1, -1, -1, 2];
-  templates.forEach((t, i) => {
-    const date = addDays(TODAY, offsets[i] ?? 0);
-    appts.push({
-      ...t,
-      id: `appt-${i}`,
-      time: times[i % times.length],
-    });
-    // Attach a date to each so we can filter (store as ISO string in id)
-    appts[appts.length - 1].id = `appt-${i}-${date.toISOString().slice(0, 10)}`;
-  });
-
-  return appts;
+function toDateString(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
-const ALL_APPTS = generateAppointments();
-
-function statusBadge(status: ApptStatus) {
-  if (status === "confirmed") return <Badge tone="success">Confirmed</Badge>;
-  if (status === "pending") return <Badge tone="pending">Pending</Badge>;
-  return <Badge tone="error">Cancelled</Badge>;
+function statusBadge(status: string) {
+  if (status === "booked")
+    return <Badge tone="pending">Waiting</Badge>;
+  if (status === "in_progress")
+    return <Badge tone="warning">In Progress</Badge>;
+  if (status === "completed")
+    return <Badge tone="success">Completed</Badge>;
+  if (status === "cancelled")
+    return <Badge tone="error">Cancelled</Badge>;
+  if (status === "no_show")
+    return <Badge tone="warning">No Show</Badge>;
+  return <Badge tone="pending">{status}</Badge>;
 }
 
 export function AppointmentsPage() {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [appointments, setAppointments] = useState<QueueEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Filter appointments for selected date using the date embedded in id
-  const appts = ALL_APPTS.filter((a) =>
-    a.id.includes(selectedDate.toISOString().slice(0, 10))
-  ).sort((a, b) => a.time.localeCompare(b.time));
+  // Cache: store appointments per date string
+  const [dateCache, setDateCache] = useState<
+    Record<string, QueueEntry[]>
+  >({});
+
+  const loadAppointments = useCallback(
+    async (date: Date) => {
+      const dateStr = toDateString(date);
+
+      // Check cache first
+      if (dateCache[dateStr]) {
+        setAppointments(dateCache[dateStr]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        // Fetch all statuses for this date
+        const data = await fetchDoctorQueue(dateStr);
+        setAppointments(data.queue);
+        setDateCache((prev) => ({
+          ...prev,
+          [dateStr]: data.queue,
+        }));
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load appointments"
+        );
+        setAppointments([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dateCache]
+  );
+
+  useEffect(() => {
+    loadAppointments(selectedDate);
+  }, [selectedDate, loadAppointments]);
 
   // Week view — 7 days starting Monday of the current week
-  const dayOfWeek = TODAY.getDay();
-  const monday = addDays(TODAY, dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const dayOfWeek = selectedDate.getDay();
+  const monday = addDays(
+    selectedDate,
+    dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  );
+  const weekDays = Array.from({ length: 7 }, (_, i) =>
+    addDays(monday, i)
+  );
 
-  const confirmed = appts.filter((a) => a.status === "confirmed").length;
-  const pending = appts.filter((a) => a.status === "pending").length;
-  const cancelled = appts.filter((a) => a.status === "cancelled").length;
+  const booked = appointments.filter(
+    (a) => a.appointmentStatus === "booked"
+  ).length;
+  const inProgress = appointments.filter(
+    (a) => a.appointmentStatus === "in_progress"
+  ).length;
+  const completed = appointments.filter(
+    (a) => a.appointmentStatus === "completed"
+  ).length;
 
   return (
     <DoctorShell pageTitle="Appointments">
@@ -115,17 +139,25 @@ export function AppointmentsPage() {
       <div className="mb-5 rounded-md border border-border bg-surface p-3 overflow-x-auto">
         <div className="flex items-center justify-between mb-3 px-1">
           <button
-            onClick={() => setSelectedDate((d) => addDays(d, -7))}
+            onClick={() =>
+              setSelectedDate((d) => addDays(d, -7))
+            }
             className="rounded-md p-1 text-ink-muted hover:bg-bg"
             aria-label="Previous week"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <p className="text-sm font-semibold text-ink">
-            Week of {monday.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+            Week of{" "}
+            {monday.toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+            })}
           </p>
           <button
-            onClick={() => setSelectedDate((d) => addDays(d, 7))}
+            onClick={() =>
+              setSelectedDate((d) => addDays(d, 7))
+            }
             className="rounded-md p-1 text-ink-muted hover:bg-bg"
             aria-label="Next week"
           >
@@ -136,9 +168,11 @@ export function AppointmentsPage() {
           {weekDays.map((day) => {
             const isSelected = isSameDay(day, selectedDate);
             const isToday = isSameDay(day, TODAY);
-            const dayApptCount = ALL_APPTS.filter((a) =>
-              a.id.includes(day.toISOString().slice(0, 10))
-            ).length;
+            const cachedAppts =
+              dateCache[toDateString(day)];
+            const dayCount = cachedAppts
+              ? cachedAppts.length
+              : undefined;
 
             return (
               <button
@@ -149,24 +183,33 @@ export function AppointmentsPage() {
                   isSelected
                     ? "bg-brand text-white"
                     : isToday
-                    ? "border border-brand text-brand"
-                    : "hover:bg-bg text-ink-muted"
+                      ? "border border-brand text-brand"
+                      : "hover:bg-bg text-ink-muted"
                 )}
               >
                 <span className="text-xs font-medium">
-                  {day.toLocaleDateString("en-IN", { weekday: "short" })}
+                  {day.toLocaleDateString("en-IN", {
+                    weekday: "short",
+                  })}
                 </span>
-                <span className={cn("text-base font-semibold", isSelected ? "text-white" : "text-ink")}>
+                <span
+                  className={cn(
+                    "text-base font-semibold",
+                    isSelected ? "text-white" : "text-ink"
+                  )}
+                >
                   {day.getDate()}
                 </span>
-                {dayApptCount > 0 && (
+                {dayCount !== undefined && dayCount > 0 && (
                   <span
                     className={cn(
                       "flex h-4 w-4 items-center justify-center rounded-full text-xs font-medium",
-                      isSelected ? "bg-white/20 text-white" : "bg-brand/10 text-brand"
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-brand/10 text-brand"
                     )}
                   >
-                    {dayApptCount}
+                    {dayCount}
                   </span>
                 )}
               </button>
@@ -178,70 +221,129 @@ export function AppointmentsPage() {
       {/* Selected date heading + stats */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-ink">{formatDate(selectedDate)}</h2>
+          <h2 className="text-lg font-semibold text-ink">
+            {formatDate(selectedDate)}
+          </h2>
           <p className="text-sm text-ink-muted">
-            {appts.length} appointment{appts.length !== 1 ? "s" : ""}
-            {confirmed > 0 && ` · ${confirmed} confirmed`}
-            {pending > 0 && ` · ${pending} pending`}
-            {cancelled > 0 && ` · ${cancelled} cancelled`}
+            {appointments.length} appointment
+            {appointments.length !== 1 ? "s" : ""}
+            {booked > 0 && ` · ${booked} waiting`}
+            {inProgress > 0 && ` · ${inProgress} in progress`}
+            {completed > 0 && ` · ${completed} completed`}
           </p>
         </div>
+        <button
+          onClick={() => {
+            // Clear cache for this date to force refresh
+            const dateStr = toDateString(selectedDate);
+            setDateCache((prev) => {
+              const next = { ...prev };
+              delete next[dateStr];
+              return next;
+            });
+          }}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-bg transition-colors"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </button>
       </div>
 
-      {/* Appointments list */}
-      {appts.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand/10 text-brand">
-            <Clock className="h-7 w-7" />
+      {/* Loading */}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
+          <span className="ml-3 text-ink-muted">
+            Loading appointments...
           </span>
-          <p className="text-lg font-semibold text-ink">No appointments</p>
-          <p className="text-base text-ink-muted">No appointments scheduled for this date.</p>
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {appts.map((appt) => (
-            <div
-              key={appt.id}
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-4 rounded-md border bg-surface p-4 shadow-card transition-colors",
-                appt.status === "cancelled"
-                  ? "border-border opacity-60"
-                  : "border-border hover:border-brand/50"
-              )}
-            >
-              {/* Time block */}
-              <div className="flex items-center gap-4">
-                <div className="flex-shrink-0 text-center w-14">
-                  <p className="text-base font-semibold text-brand">{appt.time}</p>
-                  <p className="text-xs text-ink-muted">{appt.duration} min</p>
-                </div>
-                <div className="h-10 w-px bg-border" />
-                <div>
-                  <p className="font-semibold text-ink">{appt.patientName}</p>
-                  <p className="text-sm text-ink-muted">
-                    {appt.age}y · {appt.gender} · {appt.reason}
-                  </p>
-                </div>
-              </div>
+      )}
 
-              {/* Status + action */}
-              <div className="flex items-center gap-3">
-                {statusBadge(appt.status)}
-                {appt.status !== "cancelled" && (
-                  <button
-                    onClick={() =>
-                      navigate(`/doctor/patients/${appt.patientId}/report`)
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-md border border-brand px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 transition-colors"
-                  >
-                    <Eye className="h-4 w-4" />
-                    View
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+      {/* Error */}
+      {error && !loading && (
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <AlertTriangle className="h-8 w-8 text-accent" />
+          <p className="text-ink-muted">{error}</p>
         </div>
+      )}
+
+      {/* Appointments list */}
+      {!loading && !error && (
+        <>
+          {appointments.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand/10 text-brand">
+                <Clock className="h-7 w-7" />
+              </span>
+              <p className="text-lg font-semibold text-ink">
+                No appointments
+              </p>
+              <p className="text-base text-ink-muted">
+                No appointments scheduled for this date.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {appointments.map((appt) => (
+                <div
+                  key={appt.appointmentId}
+                  className={cn(
+                    "flex flex-wrap items-center justify-between gap-4 rounded-md border bg-surface p-4 shadow-card transition-colors",
+                    appt.appointmentStatus === "cancelled"
+                      ? "border-border opacity-60"
+                      : "border-border hover:border-brand/50"
+                  )}
+                >
+                  {/* Token + Patient info */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-shrink-0 text-center w-14">
+                      <span className="flex h-8 w-8 mx-auto items-center justify-center rounded-full bg-brand/10 text-sm font-semibold text-brand">
+                        {appt.tokenNumber}
+                      </span>
+                      <p className="text-xs text-ink-muted mt-1">
+                        Token
+                      </p>
+                    </div>
+                    <div className="h-10 w-px bg-border" />
+                    <div>
+                      <p className="font-semibold text-ink">
+                        {appt.patientName}
+                      </p>
+                      <p className="text-sm text-ink-muted">
+                        {appt.age ? `${appt.age}y` : ""}
+                        {appt.gender
+                          ? ` · ${appt.gender}`
+                          : ""}
+                        {appt.chiefComplaint
+                          ? ` · ${appt.chiefComplaint}`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status + action */}
+                  <div className="flex items-center gap-3">
+                    {statusBadge(appt.appointmentStatus)}
+                    {appt.appointmentStatus !== "cancelled" &&
+                      appt.hasSummary && (
+                        <button
+                          onClick={() =>
+                            navigate(
+                              `/doctor/patients/${appt.sessionId}/report`
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-md border border-brand px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 transition-colors"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </button>
+                      )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </DoctorShell>
   );

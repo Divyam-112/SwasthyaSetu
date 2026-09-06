@@ -53,10 +53,9 @@ const doctorSchema = new mongoose.Schema(
 );
 
 // Hash password before saving
-doctorSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+doctorSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // Compare password method

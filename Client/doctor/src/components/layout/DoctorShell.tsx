@@ -119,7 +119,7 @@ export function DoctorShell({ children, pageTitle }: DoctorShellProps) {
               </span>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{doctor.name}</p>
-                <p className="truncate text-xs text-ink-muted">{doctor.specialty}</p>
+                <p className="truncate text-xs text-ink-muted">{doctor.specialization}</p>
               </div>
             </div>
           )}
