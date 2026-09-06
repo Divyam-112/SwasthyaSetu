@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Stored as "r g b" triplets (not hex) so Tailwind's opacity
+     modifiers — bg-success/10, text-accent/30, etc. — work correctly
+     via rgb(var(--color-x) / <alpha-value>) in tailwind.config.js. */
+  --color-ink: 26 36 34; /* #1A2422 */
+  --color-ink-muted: 92 107 104; /* #5C6B68 */
+  --color-brand: 14 95 90; /* #0E5F5A */
+  --color-brand-dark: 10 70 66; /* #0A4642 */
+  --color-accent: 181 121 47; /* #B5792F */
+  --color-success: 58 122 82; /* #3A7A52 */
+  --color-error: 166 56 47; /* #A6382F */
+  --color-bg: 246 247 246; /* #F6F7F6 */
+  --color-surface: 255 255 255; /* #FFFFFF */
+  --color-border: 220 226 224; /* #DCE2E0 */
+
+  /* Set by the font-size accessibility toggle (utils/accessibility.tsx) */
+  --font-scale: 1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Everything scales off this root size, so the A/A+/A++ toggle
+     resizes the whole app, not just a few labels. */
+  font-size: calc(16px * var(--font-scale));
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: "Inter", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere — required for a device shared
+   between patients, some of whom will use a keyboard or switch device. */
+:focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect reduced-motion preferences instead of forcing animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High-contrast mode, toggled via a class on <html> from the
+   accessibility footer. Strengthens borders and text, doesn't
+   invert to a dark theme (dark UI reads less "clinical/trustworthy"
+   and can be harder for some elderly/low-vision users to parse). */
+html.high-contrast {
+  --color-ink: 0 0 0;
+  --color-ink-muted: 43 43 43;
+  --color-border: 125 125 125;
+  --color-bg: 255 255 255;
+}
+
+html.high-contrast .card,
+html.high-contrast input,
+html.high-contrast button {
+  border-width: 2px !important;
+}
