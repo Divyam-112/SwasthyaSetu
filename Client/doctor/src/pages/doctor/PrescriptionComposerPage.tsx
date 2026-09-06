@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { DoctorShell } from "@/components/layout";
 import { Button, Card, Input } from "@/components/ui";
-import { mockQueue } from "@/services/mocks/mockQueue";
-import { mockDelay } from "@/services/mocks/mockDelay";
+import { fetchPatientDetail, type PatientDetail } from "@/services/api/doctorService";
+import { createPrescription } from "@/services/api/prescriptionService";
 import { cn } from "@/utils/cn";
 
 interface MedicationRow {
@@ -57,6 +57,14 @@ const FREQUENCIES = [
   "Every 12 hours",
 ];
 
+const TIMINGS = [
+  "Before food",
+  "After food",
+  "With food",
+  "Empty stomach",
+  "Any time",
+];
+
 function newMedRow(): MedicationRow {
   return {
     id: crypto.randomUUID(),
@@ -69,20 +77,48 @@ function newMedRow(): MedicationRow {
 }
 
 export function PrescriptionComposerPage() {
-  const { patientId } = useParams<{ patientId: string }>();
+  const { patientId: sessionId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
 
-  const patient = mockQueue.find((p) => p.patientId === patientId);
+  const [session, setSession] = useState<PatientDetail | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [diagnosis, setDiagnosis] = useState("");
-  const [medications, setMedications] = useState<MedicationRow[]>([newMedRow()]);
-  const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
+  const [medications, setMedications] = useState<MedicationRow[]>([
+    newMedRow(),
+  ]);
+  const [selectedTests, setSelectedTests] = useState<Set<string>>(
+    new Set()
+  );
   const [customTest, setCustomTest] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
   const [generalAdvice, setGeneralAdvice] = useState("");
-  const [sendStatus, setSendStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [sendStatus, setSendStatus] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  function updateMed(id: string, field: keyof MedicationRow, value: string) {
+  useEffect(() => {
+    if (!sessionId) return;
+    async function loadPatient() {
+      try {
+        setLoading(true);
+        const data = await fetchPatientDetail(sessionId!);
+        setSession(data);
+      } catch {
+        // Patient data is optional here, prescription can still be written
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadPatient();
+  }, [sessionId]);
+
+  function updateMed(
+    id: string,
+    field: keyof MedicationRow,
+    value: string
+  ) {
     setMedications((prev) =>
       prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
     );
@@ -100,16 +136,62 @@ export function PrescriptionComposerPage() {
     });
   }
 
-  async function handleSendToKiosk() {
+  async function handleSendPrescription() {
+    if (!sessionId) return;
+
+    // Validate at least one medication
+    const validMeds = medications.filter((m) => m.drug.trim());
+    if (validMeds.length === 0) {
+      setSendError("Please add at least one medication.");
+      return;
+    }
+
     setSendStatus("sending");
-    await mockDelay(null, 1500);
-    setSendStatus("sent");
+    setSendError(null);
+
+    try {
+      // Build investigations list
+      const investigations = [
+        ...Array.from(selectedTests),
+        ...(customTest.trim() ? [customTest.trim()] : []),
+      ];
+
+      await createPrescription(sessionId, {
+        diagnosis,
+        medications: validMeds.map((m) => ({
+          name: m.drug,
+          dosage: m.dose,
+          frequency: m.frequency,
+          duration: m.duration,
+          timing: "After food",
+          instructions: m.instructions,
+        })),
+        investigations,
+        advice: generalAdvice,
+        followUpDate: followUpDate || undefined,
+      });
+
+      setSendStatus("sent");
+    } catch (err) {
+      setSendStatus("error");
+      setSendError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save prescription"
+      );
+    }
   }
 
-  if (!patient) {
+  const patient = session?.patient;
+  const chiefComplaint =
+    session?.clinicalHistory?.chiefComplaint || "N/A";
+
+  if (loading) {
     return (
       <DoctorShell pageTitle="Write Prescription">
-        <p className="text-ink-muted">Patient not found.</p>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
+        </div>
       </DoctorShell>
     );
   }
@@ -118,7 +200,9 @@ export function PrescriptionComposerPage() {
     <DoctorShell pageTitle="Write Prescription">
       {/* Back */}
       <button
-        onClick={() => navigate(`/doctor/patients/${patientId}/report`)}
+        onClick={() =>
+          navigate(`/doctor/patients/${sessionId}/report`)
+        }
         className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-ink-muted hover:text-ink transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -129,23 +213,37 @@ export function PrescriptionComposerPage() {
         {/* Left — Prescription form */}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
           {/* Patient summary */}
-          <Card>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand/10 font-semibold text-brand flex-shrink-0">
-                {patient.patientName.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-              </span>
-              <div>
-                <p className="font-semibold text-ink">{patient.patientName}</p>
-                <p className="text-sm text-ink-muted">
-                  {patient.age}y · {patient.gender} · {patient.abhaId}
-                </p>
+          {patient && (
+            <Card>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand/10 font-semibold text-brand flex-shrink-0">
+                  {patient.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)}
+                </span>
+                <div>
+                  <p className="font-semibold text-ink">
+                    {patient.name}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {patient.age ? `${patient.age}y` : ""}
+                    {patient.gender ? ` · ${patient.gender}` : ""}
+                    {patient.abhaId ? ` · ${patient.abhaId}` : ""}
+                  </p>
+                </div>
+                <div className="ml-auto text-right">
+                  <p className="text-xs text-ink-muted">
+                    Presenting complaint
+                  </p>
+                  <p className="text-sm font-medium text-ink">
+                    {chiefComplaint}
+                  </p>
+                </div>
               </div>
-              <div className="ml-auto text-right">
-                <p className="text-xs text-ink-muted">Presenting complaint</p>
-                <p className="text-sm font-medium text-ink">{patient.chiefComplaint}</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           {/* Diagnosis */}
           <Card>
@@ -193,24 +291,48 @@ export function PrescriptionComposerPage() {
                       label="Drug Name"
                       placeholder="e.g. Paracetamol"
                       value={med.drug}
-                      onChange={(e) => updateMed(med.id, "drug", e.target.value)}
+                      onChange={(e) =>
+                        updateMed(
+                          med.id,
+                          "drug",
+                          e.target.value
+                        )
+                      }
                     />
                     <Input
                       label="Dose"
                       placeholder="e.g. 500 mg"
                       value={med.dose}
-                      onChange={(e) => updateMed(med.id, "dose", e.target.value)}
+                      onChange={(e) =>
+                        updateMed(
+                          med.id,
+                          "dose",
+                          e.target.value
+                        )
+                      }
                     />
                     <div className="flex flex-col gap-2">
-                      <label className="block text-base font-medium text-ink">Frequency</label>
+                      <label className="block text-base font-medium text-ink">
+                        Frequency
+                      </label>
                       <select
                         className="w-full rounded-md border-2 border-border bg-surface px-4 py-2.5 text-base text-ink focus:border-brand focus:outline-none"
                         value={med.frequency}
-                        onChange={(e) => updateMed(med.id, "frequency", e.target.value)}
+                        onChange={(e) =>
+                          updateMed(
+                            med.id,
+                            "frequency",
+                            e.target.value
+                          )
+                        }
                       >
-                        <option value="">Select frequency…</option>
+                        <option value="">
+                          Select frequency…
+                        </option>
                         {FREQUENCIES.map((f) => (
-                          <option key={f} value={f}>{f}</option>
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -218,7 +340,13 @@ export function PrescriptionComposerPage() {
                       label="Duration"
                       placeholder="e.g. 5 days"
                       value={med.duration}
-                      onChange={(e) => updateMed(med.id, "duration", e.target.value)}
+                      onChange={(e) =>
+                        updateMed(
+                          med.id,
+                          "duration",
+                          e.target.value
+                        )
+                      }
                     />
                     <div className="sm:col-span-2">
                       <Input
@@ -226,7 +354,11 @@ export function PrescriptionComposerPage() {
                         placeholder="e.g. Take after food, avoid alcohol"
                         value={med.instructions}
                         onChange={(e) =>
-                          updateMed(med.id, "instructions", e.target.value)
+                          updateMed(
+                            med.id,
+                            "instructions",
+                            e.target.value
+                          )
                         }
                       />
                     </div>
@@ -234,7 +366,9 @@ export function PrescriptionComposerPage() {
                 </div>
               ))}
               <button
-                onClick={() => setMedications((prev) => [...prev, newMedRow()])}
+                onClick={() =>
+                  setMedications((prev) => [...prev, newMedRow()])
+                }
                 className="flex items-center gap-2 rounded-md border border-dashed border-brand px-4 py-3 text-sm font-medium text-brand hover:bg-brand/5 transition-colors"
               >
                 <Plus className="h-4 w-4" />
@@ -300,7 +434,9 @@ export function PrescriptionComposerPage() {
                   rows={3}
                   placeholder="Rest, hydration, dietary restrictions, activity guidelines…"
                   value={generalAdvice}
-                  onChange={(e) => setGeneralAdvice(e.target.value)}
+                  onChange={(e) =>
+                    setGeneralAdvice(e.target.value)
+                  }
                 />
               </div>
             </div>
@@ -310,20 +446,25 @@ export function PrescriptionComposerPage() {
         {/* Right — Actions panel */}
         <aside className="w-full lg:w-64 flex-shrink-0 flex flex-col gap-4">
           <Card>
-            <h3 className="mb-3 text-base font-semibold text-ink">Actions</h3>
+            <h3 className="mb-3 text-base font-semibold text-ink">
+              Actions
+            </h3>
 
             {sendStatus === "sent" ? (
               <div className="flex flex-col items-center gap-2 rounded-md border border-success/30 bg-success/5 px-4 py-5 text-center text-success">
                 <CheckCircle2 className="h-8 w-8" />
-                <p className="font-semibold">Sent to Kiosk</p>
+                <p className="font-semibold">
+                  Prescription Saved
+                </p>
                 <p className="text-xs text-ink-muted">
-                  Patient can collect the prescription printout at the kiosk.
+                  Prescription has been saved and linked to
+                  the patient's session.
                 </p>
               </div>
             ) : (
               <>
                 <button
-                  onClick={handleSendToKiosk}
+                  onClick={handleSendPrescription}
                   disabled={sendStatus === "sending"}
                   className="mb-2 flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-3 text-base font-semibold text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                 >
@@ -332,12 +473,20 @@ export function PrescriptionComposerPage() {
                   ) : (
                     <Send className="h-5 w-5" />
                   )}
-                  {sendStatus === "sending" ? "Sending…" : "Send to Kiosk"}
+                  {sendStatus === "sending"
+                    ? "Saving…"
+                    : "Save Prescription"}
                 </button>
                 <button className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium text-ink-muted hover:bg-bg transition-colors">
                   <Printer className="h-4 w-4" />
                   Print Prescription
                 </button>
+
+                {sendError && (
+                  <p className="mt-2 text-sm text-error">
+                    {sendError}
+                  </p>
+                )}
               </>
             )}
           </Card>
@@ -349,19 +498,32 @@ export function PrescriptionComposerPage() {
             </h4>
             <ul className="flex flex-col gap-1 text-sm text-ink">
               <li>
-                <span className="text-ink-muted">Medications: </span>
-                <strong>{medications.filter((m) => m.drug).length}</strong>
+                <span className="text-ink-muted">
+                  Medications:{" "}
+                </span>
+                <strong>
+                  {medications.filter((m) => m.drug).length}
+                </strong>
               </li>
               <li>
-                <span className="text-ink-muted">Tests ordered: </span>
+                <span className="text-ink-muted">
+                  Tests ordered:{" "}
+                </span>
                 <strong>
-                  {selectedTests.size + (customTest.trim() ? 1 : 0)}
+                  {selectedTests.size +
+                    (customTest.trim() ? 1 : 0)}
                 </strong>
               </li>
               {followUpDate && (
                 <li>
-                  <span className="text-ink-muted">Follow-up: </span>
-                  <strong>{new Date(followUpDate).toLocaleDateString("en-IN")}</strong>
+                  <span className="text-ink-muted">
+                    Follow-up:{" "}
+                  </span>
+                  <strong>
+                    {new Date(
+                      followUpDate
+                    ).toLocaleDateString("en-IN")}
+                  </strong>
                 </li>
               )}
             </ul>

@@ -1,27 +1,64 @@
 import type { DoctorProfile } from "@/types/doctor-session";
-import { findMockDoctorAccount } from "@/services/mocks/mockDoctors";
-import { mockDelay } from "@/services/mocks/mockDelay";
+import { apiRequest, setAuthToken } from "@/services/api/client";
 
 export interface DoctorAuthResult {
   doctor: DoctorProfile;
+  token: string;
+}
+
+interface BackendLoginResponse {
+  success: boolean;
+  data: {
+    doctor: {
+      _id: string;
+      name: string;
+      email: string;
+      specialization: string;
+      hospitalId?: string;
+      role: string;
+    };
+    token: string;
+  };
+  message: string;
 }
 
 /**
- * Authenticates a doctor by email + password.
- * MOCK IMPLEMENTATION — replace body with real FastAPI call when ready.
- *   return apiRequest<DoctorAuthResult>("/doctor/auth/login", { method: "POST", body: ... })
+ * Authenticates a doctor by email + password via the backend API.
+ * POST /api/auth/doctor/login
  */
 export async function loginDoctor(
   email: string,
   password: string
 ): Promise<DoctorAuthResult> {
-  await mockDelay(null, 900);
+  const response = await apiRequest<BackendLoginResponse>(
+    "/auth/doctor/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      skipAuth: true, // No token needed for login
+    }
+  );
 
-  const account = findMockDoctorAccount(email, password);
-  if (!account) {
-    throw new Error(
-      "Invalid email or password. Please check your credentials and try again."
-    );
-  }
-  return { doctor: account.doctor };
+  const { doctor: backendDoctor, token } = response.data;
+
+  // Save JWT token to localStorage
+  setAuthToken(token);
+
+  // Map backend fields to frontend DoctorProfile
+  const doctor: DoctorProfile = {
+    id: backendDoctor._id,
+    name: backendDoctor.name,
+    email: backendDoctor.email,
+    specialization: backendDoctor.specialization,
+    hospitalId: backendDoctor.hospitalId,
+    role: backendDoctor.role,
+    initials: backendDoctor.name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2),
+  };
+
+  return { doctor, token };
 }

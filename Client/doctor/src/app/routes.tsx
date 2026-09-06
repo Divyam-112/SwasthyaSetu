@@ -5,6 +5,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 
 // Doctor pages
 import { DoctorLoginPage } from "@/pages/doctor-auth/DoctorLoginPage";
+import { DoctorRegisterPage } from "@/pages/doctor-auth/DoctorRegisterPage";
 import { QueuePage } from "@/pages/doctor/QueuePage";
 import { PatientReportPage } from "@/pages/doctor/PatientReportPage";
 import { PrescriptionComposerPage } from "@/pages/doctor/PrescriptionComposerPage";
@@ -30,6 +31,7 @@ export function AppRoutes() {
       {/* ── Doctor flow ── */}
       {/* Public: login page */}
       <Route path="/doctor" element={<DoctorLoginPage />} />
+      <Route path="/doctor/register" element={<DoctorRegisterPage />} />
 
       {/* Protected: require doctor session */}
       <Route

@@ -6,7 +6,6 @@ import {
   Lock,
   Loader2,
   AlertCircle,
-  Info,
   ArrowLeft,
 } from "lucide-react";
 import { KioskShell } from "@/components/layout";
@@ -164,15 +163,16 @@ export function DoctorLoginPage() {
           </form>
         </Card>
 
-        {/* Demo credentials helper */}
-        <div className="flex items-start gap-2 rounded-md border border-border bg-surface px-4 py-3 text-sm text-ink-muted">
-          <Info className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
-          <span>
-            Demo credentials:{" "}
-            <strong className="text-ink">dr.priya@medikiosk.in</strong> /{" "}
-            <strong className="text-ink">Doctor@123</strong>
-          </span>
-        </div>
+        {/* Register link */}
+        <p className="text-center text-sm text-ink-muted">
+          Don't have an account?{" "}
+          <Link
+            to="/doctor/register"
+            className="font-medium text-brand hover:underline"
+          >
+            Create one here
+          </Link>
+        </p>
       </div>
     </KioskShell>
   );
